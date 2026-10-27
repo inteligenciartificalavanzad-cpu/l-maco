@@ -1,0 +1,67 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- Funciones de ayuda ----
+    function perfilDe() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+    }
+    function tieneRol(roles) {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid))
+        && perfilDe().get('activo', true) == true
+        && perfilDe().rol in roles;
+    }
+
+    // Usuarios: cada persona lee su propio perfil; solo el admin administra.
+    match /usuarios/{uid} {
+      allow read: if request.auth != null && (request.auth.uid == uid || tieneRol(['admin']));
+      allow write: if tieneRol(['admin']);
+    }
+
+    match /clientes/{id} {
+      allow read: if tieneRol(['admin', 'vendedor', 'repartidor']);
+      allow write: if tieneRol(['admin', 'vendedor']);
+    }
+
+    match /catalogo/{id} {
+      allow read: if tieneRol(['admin', 'vendedor', 'repartidor']);
+      allow write: if tieneRol(['admin']);
+    }
+
+    match /pedidos/{id} {
+      allow read: if tieneRol(['admin', 'vendedor', 'repartidor']);
+      allow create, update: if tieneRol(['admin', 'vendedor']);
+      allow delete: if tieneRol(['admin']);
+    }
+
+    match /ventas/{id} {
+      allow read: if tieneRol(['admin', 'vendedor']);
+      allow create, update: if tieneRol(['admin', 'vendedor']);
+      allow delete: if tieneRol(['admin']);
+    }
+
+    // Movimientos de inventario (las ventas los crean; solo el admin los corrige)
+    match /movimientos/{id} {
+      allow read: if tieneRol(['admin', 'vendedor']);
+      allow create: if tieneRol(['admin', 'vendedor']);
+      allow update, delete: if tieneRol(['admin']);
+    }
+
+    match /repartos/{id} {
+      allow read: if tieneRol(['admin', 'vendedor', 'repartidor']);
+      allow create, update: if tieneRol(['admin', 'vendedor', 'repartidor']);
+      allow delete: if tieneRol(['admin']);
+    }
+
+    // Solo administrador
+    match /proveedores/{id}  { allow read, write: if tieneRol(['admin']); }
+    match /compras/{id}      { allow read, write: if tieneRol(['admin']); }
+    match /trabajadores/{id} { allow read, write: if tieneRol(['admin']); }
+    match /finanzas/{id}     { allow read, write: if tieneRol(['admin']); }
+    match /config/{id}       { allow read, write: if tieneRol(['admin']); }
+
+    // Todo lo demás, bloqueado
+    match /{document=**} { allow read, write: if false; }
+  }
+}
